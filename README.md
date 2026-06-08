@@ -45,6 +45,7 @@ You will:
   - [CodeQL query suites](#codeql-query-suites)
 - [SCA workflow](#sca-workflow)
   - [What SCA is](#what-sca-is)
+  - [Why two SCA tools](#why-two-sca-tools)
   - [SCA workflow YAML](#sca-workflow-yaml)
   - [How the SCA workflow works](#how-the-sca-workflow-works)
 - [DAST workflow](#dast-workflow)
@@ -78,7 +79,9 @@ You will:
 This project builds a simple Flask calculator app and wires it into GitHub Actions so that every push or pull request can trigger three types of security scans:
 
 - SAST using CodeQL for source code analysis  
-- SCA using OWASP Dependency-Check for dependency and CVE analysis  
+- SCA using:
+  - OWASP Dependency-Check for generic SCA wiring  
+  - pip-audit for Python-specific dependency vulnerabilities  
 - DAST using OWASP ZAP for dynamic scanning of the running app  
 
 For beginners, the DAST job is configured to **stay green** even when ZAP finds alerts. You still get full reports to learn from, but you avoid “red build” anxiety in early sessions.
@@ -101,14 +104,13 @@ Typical findings include:
 
 ### What SCA does
 
-**SCA** (Software Composition Analysis) scans the libraries and packages your project depends on.
+**SCA** (Software Composition Analysis) scans the libraries and packages your project depends on for known vulnerabilities and outdated versions.
 
 Typical findings include:
 
 - known vulnerable dependency versions
 - outdated packages with published CVEs
 - vulnerable transitive dependencies
-- sometimes license or metadata issues
 
 ### What DAST does
 
@@ -129,7 +131,7 @@ Typical findings include:
    ↓
 2. SAST scans source code with CodeQL
    ↓
-3. SCA scans dependencies with Dependency-Check
+3. SCA scans dependencies with Dependency-Check + pip-audit
    ↓
 4. Application starts successfully
    ↓
@@ -189,12 +191,10 @@ Avoid:
 
 Examples:
 
-- ✅ `sca-reports`
-- ✅ `zap-baseline-reports`
-- ✅ `zap-fullscan-reports`
-- ❌ `zap_scan`
-- ❌ `sca_reports`
-- ❌ `dast/reports`
+- `sca-reports`
+- `pip-audit-report`
+- `zap-baseline-reports`
+- `zap-fullscan-reports`
 
 ### Node.js 24 warning and env
 
@@ -219,6 +219,7 @@ Use pinned, known-good versions for stability.
 
 # SCA
 - dependency-check/Dependency-Check_Action@main
+- pip-audit (installed via pip in the job)
 
 # DAST
 - zaproxy/action-baseline@v0.15.0
@@ -448,9 +449,11 @@ if __name__ == '__main__':
 ```txt
 flask==2.0.1
 werkzeug==2.0.1
+requests==2.19.0
+urllib3==1.22
 ```
 
-These versions are intentionally old enough to help demonstrate SCA behavior.
+These versions are intentionally old to help demonstrate SCA behavior with pip‑audit.
 
 ### Create `Dockerfile`
 
@@ -571,6 +574,18 @@ Common query packs:
 
 SCA checks your packages and transitive dependencies for known vulnerabilities.
 
+### Why two SCA tools
+
+In this lab we use:
+
+- **OWASP Dependency‑Check**: a generic SCA engine that integrates well into CI pipelines and supports multiple ecosystems, but Python support is experimental.  
+- **pip‑audit**: a Python‑specific SCA tool maintained by PyPA, which reliably flags vulnerable PyPI packages.
+
+Students see both:
+
+- the “classic” OWASP SCA tool wired into CI, and  
+- a modern Python-native SCA tool that actually reports vulnerabilities for `flask`, `requests`, `urllib3`, etc.
+
 ### SCA workflow YAML
 
 Create `.github/workflows/2-sca-only.yml`:
@@ -593,7 +608,7 @@ permissions:
 
 jobs:
   sca:
-    name: OWASP Dependency-Check (SCA)
+    name: OWASP Dependency-Check (SCA) + pip-audit
     runs-on: ubuntu-latest
 
     steps:
@@ -610,6 +625,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 1) Generic SCA with Dependency-Check
       - name: Run OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
@@ -635,19 +651,40 @@ jobs:
         with:
           sarif_file: reports/dependency-check-report.sarif
           category: sca
+
+      # 2) Python-focused SCA with pip-audit
+      - name: Install pip-audit
+        run: |
+          python -m pip install pip-audit
+
+      - name: Run pip-audit on requirements.txt
+        run: |
+          pip-audit -r requirements.txt -f json -o pip-audit-report.json
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
 ```
 
 ### How the SCA workflow works
 
-Key settings:
+Key points to explain to students:
 
-- `project: 'calculator-app'` gives the scan a readable name  
-- `path: '.'` scans the repository root  
-- `format: 'ALL'` generates multiple report formats  
-- `--failOnCVSS 7` sets a failure threshold at CVSS 7 and above  
-- `--disableOssIndex` avoids extra analyzer warnings in a beginner lab  
+- Dependency‑Check:
+  - Scans the repository (`path: '.'`), looks at dependencies, and writes multiple formats under `reports/`.  
+  - Python scanning is experimental; use it here mainly to show a classic OWASP SCA tool in a pipeline.  
 
-Reports are uploaded even if the scan fails, which is useful for teaching.
+- pip‑audit:
+  - Reads `requirements.txt`, queries Python advisory databases, and writes a JSON report with concrete vulnerabilities.  
+  - With `flask==2.0.1`, `werkzeug==2.0.1`, `requests==2.19.0`, `urllib3==1.22`, the report will contain some findings.
+
+Artifacts produced:
+
+- `sca-reports` – Dependency‑Check HTML/JSON/XML reports  
+- `pip-audit-report` – `pip-audit-report.json` with Python-specific SCA findings  
 
 ---
 
@@ -855,7 +892,7 @@ jobs:
           category: sast
 
   sca:
-    name: "2️⃣ SCA - Dependency Check"
+    name: "2️⃣ SCA - Dependency Check + pip-audit"
     runs-on: ubuntu-latest
     needs: sast
 
@@ -885,12 +922,34 @@ jobs:
             --enableRetired
             --disableOssIndex
 
-      - name: Upload SCA reports
+      - name: Upload SCA reports (Dependency-Check)
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sca-reports
           path: reports/
+
+      - name: Upload SARIF to GitHub Security (if present)
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('reports/dependency-check-report.sarif') != ''
+        with:
+          sarif_file: reports/dependency-check-report.sarif
+          category: sca
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install pip-audit
+
+      - name: Run pip-audit on requirements.txt
+        run: |
+          pip-audit -r requirements.txt -f json -o pip-audit-report.json
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
 
   build:
     name: "3️⃣ Build Application"
@@ -1025,6 +1084,7 @@ jobs:
           echo "## Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "- SAST (CodeQL): completed; check Security tab for findings" >> $GITHUB_STEP_SUMMARY
           echo "- SCA (Dependency-Check): completed; see sca-reports artifact" >> $GITHUB_STEP_SUMMARY
+          echo "- SCA (pip-audit): completed; see pip-audit-report artifact" >> $GITHUB_STEP_SUMMARY
           echo "- DAST (ZAP): completed; see zap-baseline-reports and zap-fullscan-reports" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Notes" >> $GITHUB_STEP_SUMMARY
@@ -1045,12 +1105,12 @@ git push origin main
 
 ### Watch workflow runs
 
-- Open the **Actions** tab.
-- Look for:
-  - `1. SAST - Code Security Scan`
-  - `2. SCA - Dependency Security Scan`
-  - `3. DAST - Live Application Scan (Beginner Friendly)`
-  - `4. Complete Security Pipeline`
+In the **Actions** tab, look for:
+
+- `1. SAST - Code Security Scan`
+- `2. SCA - Dependency Security Scan`
+- `3. DAST - Live Application Scan (Beginner Friendly)`
+- `4. Complete Security Pipeline`
 
 Most jobs should be green unless something is actually broken (e.g., app won’t start).
 
@@ -1058,13 +1118,14 @@ Most jobs should be green unless something is actually broken (e.g., app won’t
 
 From any run:
 
-- Scroll to **Artifacts**
-- Download:
-  - `sca-reports`
-  - `zap-baseline-reports`
-  - `zap-fullscan-reports`
+- SCA:
+  - `sca-reports` → Dependency‑Check HTML/JSON/XML  
+  - `pip-audit-report` → `pip-audit-report.json` with Python vulnerabilities  
+- DAST:
+  - `zap-baseline-reports`  
+  - `zap-fullscan-reports`  
 
-Open the HTML reports in a browser to review findings.
+Open the HTML and JSON reports in a browser or JSON viewer to review findings.
 
 ---
 
@@ -1083,10 +1144,11 @@ Open the HTML reports in a browser to review findings.
 ### Severity levels
 
 - CodeQL: error / warning / note.
-- Dependency-Check: CVSS-based (e.g., 7+ is often “high”).
+- Dependency-Check: CVSS-based (e.g. High, Medium, Low).
+- pip-audit: severity from advisory data (Critical, High, Medium, Low).
 - ZAP: High / Medium / Low / Informational.
 
-Explain to students that “green pipeline” does not mean “no issues”; it only means “tools ran successfully”.
+“Green pipeline” does not mean “no issues”; it only means “tools ran successfully”.
 
 ---
 
@@ -1136,6 +1198,8 @@ Common issues:
 
 - **App won’t start**: check `flask.log` output in the workflow logs.
 - **ZAP cannot connect**: confirm `http://localhost:5000` is correct and the wait loop passes.
+- **Dependency-Check reports zero Python vulnerabilities**: this is expected in some cases because Python support is experimental; use pip‑audit for reliable Python SCA.
+- **pip-audit fails**: check for network issues or typos in `requirements.txt`.
 - **Artifact name errors**: remove underscores or slashes from artifact names.
 - **Permissions errors**: ensure `security-events: write` and `contents: read` are set.
 
@@ -1144,6 +1208,7 @@ Common issues:
 ## Practice exercises
 
 - Run each workflow individually (SAST, SCA, DAST) and identify at least one finding.
+- From `pip-audit-report.json`, pick one vulnerable dependency, look it up, and propose an upgrade version.
 - Use the integrated pipeline and compare results across scans.
 - Fix one SCA or SAST issue, push again, and observe how the results change.
 - Use ZAP reports to identify which issues are headers vs application code.
