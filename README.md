@@ -665,6 +665,35 @@ jobs:
         run: |
           pip-audit -r requirements.txt -f json -o pip-audit-report.json || true
 
+      - name: Print pip-audit summary
+        run: |
+          python - << 'EOF'
+          import json, pathlib
+
+          path = pathlib.Path("pip-audit-report.json")
+          if not path.exists():
+              print("pip-audit-report.json not found, skipping summary")
+              raise SystemExit(0)
+
+          with path.open() as f:
+              data = json.load(f)
+
+          if isinstance(data, dict) and "dependencies" in data:
+              deps = data["dependencies"]
+          else:
+              deps = data
+
+          total_vulns = 0
+          vulnerable_pkgs = 0
+          for dep in deps:
+              vulns = dep.get("vulns", [])
+              if vulns:
+                  vulnerable_pkgs += 1
+                  total_vulns += len(vulns)
+
+          print(f"pip-audit summary: Found {total_vulns} known vulnerabilities in {vulnerable_pkgs} packages")
+          EOF
+
       - name: Upload pip-audit report
         uses: actions/upload-artifact@v4
         if: always()
@@ -685,6 +714,8 @@ Key points to explain to students:
   - Reads `requirements.txt`, queries Python advisory databases, and writes a JSON report with concrete vulnerabilities.
   - With `flask==2.0.1`, `werkzeug==2.0.1`, `requests==2.19.0`, `urllib3==1.22`, the report will contain some findings.
   - The `|| true` ensures the workflow does not fail even if pip‑audit exits with a non-zero code when it detects vulnerabilities.
+  - The summary step prints a line like:
+    - `pip-audit summary: Found 30 known vulnerabilities in 5 packages`
 
 Artifacts produced:
 
@@ -1069,6 +1100,35 @@ jobs:
         run: |
           pip-audit -r requirements.txt -f json -o pip-audit-report.json || true
 
+      - name: Print pip-audit summary
+        run: |
+          python - << 'EOF'
+          import json, pathlib
+
+          path = pathlib.Path("pip-audit-report.json")
+          if not path.exists():
+              print("pip-audit-report.json not found, skipping summary")
+              raise SystemExit(0)
+
+          with path.open() as f:
+              data = json.load(f)
+
+          if isinstance(data, dict) and "dependencies" in data:
+              deps = data["dependencies"]
+          else:
+              deps = data
+
+          total_vulns = 0
+          vulnerable_pkgs = 0
+          for dep in deps:
+              vulns = dep.get("vulns", [])
+              if vulns:
+                  vulnerable_pkgs += 1
+                  total_vulns += len(vulns)
+
+          print(f"pip-audit summary: Found {total_vulns} known vulnerabilities in {vulnerable_pkgs} packages")
+          EOF
+
       - name: Upload pip-audit report
         uses: actions/upload-artifact@v4
         if: always()
@@ -1209,11 +1269,11 @@ jobs:
           echo "## Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "- SAST (CodeQL): completed; check Security tab for findings" >> $GITHUB_STEP_SUMMARY
           echo "- SCA (Dependency-Check): completed; see sca-reports artifact" >> $GITHUB_STEP_SUMMARY
-          echo "- SCA (pip-audit): completed; see pip-audit-report artifact" >> $GITHUB_STEP_SUMMARY
+          echo "- SCA (pip-audit): completed; see pip-audit-report artifact and pipeline log summary" >> $GITHUB_STEP_SUMMARY
           echo "- DAST (ZAP): completed; see zap-baseline-reports and zap-fullscan-reports" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Notes" >> $GITHUB_STEP_SUMMARY
-          echo "- In this beginner lab, ZAP and pip-audit findings do NOT fail the pipeline. Use the reports to learn how to read and prioritize findings." >> $GITHUB_STEP_SUMMARY
+          echo "- In this beginner lab, ZAP and pip-audit findings do NOT fail the pipeline. Use the reports and summaries to learn how to read and prioritize findings." >> $GITHUB_STEP_SUMMARY
 ```
 
 ---
@@ -1260,6 +1320,8 @@ Open the HTML and JSON reports in a browser or JSON viewer to review findings.
 
 - Shows per-workflow status and logs.
 - Good for debugging failing steps and checking if the app started.
+- Shows the pip‑audit summary line, for example:  
+  `pip-audit summary: Found 30 known vulnerabilities in 5 packages`
 
 ### Security tab
 
@@ -1333,7 +1395,7 @@ Common issues:
 ## Practice exercises
 
 - Run each workflow individually (SAST, SCA, DAST) and identify at least one finding.
-- From `pip-audit-report.json`, or `pip-audit-summary.csv`, pick one vulnerable dependency, look it up, and propose an upgrade version.
+- From `pip-audit-report.json` or `pip-audit-summary.csv`, pick one vulnerable dependency, look it up, and propose an upgrade version.
 - Use the integrated pipeline and compare results across scans.
 - Fix one SCA or SAST issue, push again, and observe how the results change.
 - Use ZAP reports to identify which issues are headers vs application code.
