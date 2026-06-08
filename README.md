@@ -75,6 +75,7 @@ A complete beginner-friendly DevSecOps lab that shows how to scan source code, d
   - [Exercise 3: Interpret ZAP findings](#exercise-3-interpret-zap-findings)
   - [Exercise 4: Compare multiple scans](#exercise-4-compare-multiple-scans)
   - [Exercise 5: Document the pipeline](#exercise-5-document-the-pipeline)
+  - [Exercise 6: Turn the pipeline green](#exercise-6-turn-the-pipeline-green)
 - [Quick reference](#quick-reference)
 
 ---
@@ -497,6 +498,8 @@ git commit -m "Initial commit: Calculator web app"
 
 SAST examines code without running it. In this guide, GitHub CodeQL is used because it integrates directly with GitHub Actions and the Security tab.
 
+CodeQL checks fail pull requests automatically when they detect high or critical security issues, so in this lab you should expect SAST jobs to fail until you address the reported findings. [web:158][web:155]
+
 ### SAST workflow YAML
 
 Create `.github/workflows/1-sast-only.yml`:
@@ -648,14 +651,14 @@ Key settings:
 - `project: 'calculator-app'` gives the scan a readable project name.
 - `path: '.'` scans the repository root.
 - `format: 'ALL'` generates multiple report formats.
-- `--failOnCVSS 7` sets the failure threshold to high severity.
+- `--failOnCVSS 7` sets the failure threshold to high severity and will fail the job when any vulnerability has CVSS ≥ 7. [web:145][web:154]
 - `--disableOssIndex` suppresses the Sonatype OSS Index analyzer warning for this beginner-friendly demo.
 
-The reports are uploaded even if the scan fails, which is important for teaching and debugging.
+The reports are uploaded even if the scan fails, which is important for teaching and debugging. [web:145][web:148]
 
-For this guide, the SCA workflow intentionally uses NVD-based sources only. That keeps setup simple and avoids Sonatype credential management in a beginner lab.
+For this guide, the SCA workflow intentionally uses NVD-based sources only. That keeps setup simple and avoids Sonatype credential management in a beginner lab. [web:148]
 
-If you previously saw a warning like `Sonatype OSS Index Analyzer disabled due to missing credentials`, this README now avoids that noise by explicitly disabling the OSS Index analyzer in the workflow arguments. That warning is not a fatal error, but disabling the analyzer makes the demo cleaner and easier to teach.
+If you previously saw a warning like `Sonatype OSS Index Analyzer disabled due to missing credentials`, this README now avoids that noise by explicitly disabling the OSS Index analyzer in the workflow arguments. That warning is not a fatal error, but disabling the analyzer makes the demo cleaner and easier to teach. [web:145]
 
 ---
 
@@ -734,7 +737,7 @@ jobs:
           cmd_options: '-a'
           allow_issue_writing: false
           artifact_name: 'zap-baseline-scan'
-        continue-on-error: true
+          fail_action: true
 
       - name: Preserve baseline reports
         if: always()
@@ -747,10 +750,9 @@ jobs:
         uses: zaproxy/action-full-scan@v0.12.0
         with:
           target: 'http://localhost:5000'
-          cmd_options: '-a -j'
+          cmd_options: '-a -j -I'
           allow_issue_writing: false
           artifact_name: 'zap-fullscan-scan'
-        continue-on-error: true
 
       - name: Preserve full scan reports
         if: always()
@@ -788,7 +790,10 @@ This version improves reliability in a few important ways:
 - it saves baseline and full scan reports into separate folders
 - it avoids report overwrite confusion
 - it keeps artifacts available even when scans return warnings or soft failures
-- it opts JavaScript actions into Node 24 early so the workflow is better aligned with GitHub's 2026 runtime migration
+- it opts JavaScript actions into Node 24 early so the workflow is better aligned with GitHub's 2026 runtime migration [web:106][web:124]
+- it is configured so that ZAP findings can fail the job, which is ideal for teaching how to respond to DAST alerts [web:150][web:147]
+
+With `fail_action: true` in the baseline scan and `-I` in the full scan, ZAP will mark the job as failed when failing-level alerts are present, while still uploading full reports for discussion. [web:150][web:147]
 
 ### Optional ZAP rules file
 
@@ -980,7 +985,7 @@ jobs:
           cmd_options: '-a'
           allow_issue_writing: false
           artifact_name: 'zap-baseline-scan'
-        continue-on-error: true
+          fail_action: true
 
       - name: Preserve baseline reports
         if: always()
@@ -993,10 +998,9 @@ jobs:
         uses: zaproxy/action-full-scan@v0.12.0
         with:
           target: 'http://localhost:5000'
-          cmd_options: '-a -j'
+          cmd_options: '-a -j -I'
           allow_issue_writing: false
           artifact_name: 'zap-fullscan-scan'
-        continue-on-error: true
 
       - name: Preserve full scan reports
         if: always()
@@ -1036,10 +1040,12 @@ jobs:
           echo "- DAST (ZAP): completed; see zap-baseline-reports and zap-fullscan-reports" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Notes" >> $GITHUB_STEP_SUMMARY
-          echo "- DAST steps use continue-on-error so you should still inspect reports and logs" >> $GITHUB_STEP_SUMMARY
+          echo "- This demo intentionally fails when serious SAST, SCA, or DAST findings are present. Use the reports and logs to decide what to fix next." >> $GITHUB_STEP_SUMMARY
 ```
 
 ### Execution order
+
+In this integrated pipeline, any of the SAST, SCA, or DAST jobs can cause the workflow to fail when they find serious issues. This is intentional for teaching: students should expect red builds until they address the underlying findings.
 
 ```text
 1. SAST
@@ -1065,373 +1071,28 @@ These names are safe for GitHub Actions and are easy for students to understand.
 
 ---
 
-## Running the repo
+## Practice exercises (new teaching focus)
 
-### Push to GitHub
-
-If you cloned the repository first, the `origin` remote is already configured, so the normal push flow is much simpler:
-
-```bash
-git branch -M main
-git push -u origin main
-```
-
-If the GitHub repository was initialized with its own README, license, or `.gitignore`, pull first and then push:
-
-```bash
-git pull --rebase origin main
-git push -u origin main
-```
-
-If you still need to confirm the remote URL, check it with:
-
-```bash
-git remote -v
-```
-
-Only change the remote URL if it points to the wrong repository:
-
-```bash
-git remote set-url origin https://github.com/YOUR_USERNAME/calculator-security-demo.git
-```
-
-### Watch workflow runs
-
-In GitHub:
-
-1. open the repository
-2. click the **Actions** tab
-3. observe the four workflows
-
-You should see:
-
-- `1. SAST - Code Security Scan`
-- `2. SCA - Dependency Security Scan`
-- `3. DAST - Live Application Scan`
-- `4. Complete Security Pipeline`
-
-### Verify artifacts
-
-After runs finish:
-
-1. open a completed workflow run
-2. scroll to the **Artifacts** section
-3. verify that you can download:
-   - `sca-reports`
-   - `zap-baseline-reports`
-   - `zap-fullscan-reports`
-
----
-
-## Reading results
-
-### Actions tab
-
-The Actions tab shows:
-
-- step-by-step logs
-- failed steps
-- uploaded artifacts
-- timing and run order
-
-This is the best place to debug pipeline behavior.
-
-### Security tab
-
-The Security tab is useful for findings that GitHub ingests directly, especially CodeQL alerts.
-
-Look for:
-
-- vulnerability list
-- severity
-- affected files and lines
-- fix guidance
-
-### Severity levels
-
-| Severity | CVSS Score | Typical response |
-| :-- | :-- | :-- |
-| Critical | 9.0 - 10.0 | Fix immediately |
-| High | 7.0 - 8.9 | Fix quickly |
-| Medium | 4.0 - 6.9 | Fix in planned cycle |
-| Low | 0.1 - 3.9 | Track and fix when practical |
-
----
-
-## Understanding ZAP findings
-
-### Result categories
-
-Typical result labels from ZAP include:
-
-- `PASS`
-- `WARN-NEW`
-- `WARN-INPROG`
-- `FAIL-NEW`
-- `FAIL-INPROG`
-- `INFO`
-
-### Common header findings
-
-| Issue code | Meaning | Why it matters |
-| :-- | :-- | :-- |
-| 10020 | Missing X-Frame-Options | Clickjacking risk |
-| 10021 | Missing X-Content-Type-Options | MIME-sniffing risk |
-| 10035 | Missing HSTS | HTTPS downgrade / MITM concerns |
-| 10038 | Missing CSP | Higher XSS exposure |
-| 10063 | Missing Permissions Policy | Browser feature exposure |
-| 10036 | Server version leakage | Information disclosure |
-
-### Application findings
-
-| Issue code | Meaning | Example impact |
-| :-- | :-- | :-- |
-| 40018 | SQL injection | Database manipulation |
-| 40019 | Cross-site scripting | Script injection |
-| 90005 | Broken authentication | Weak identity controls |
-| 90006 | CORS misconfiguration | Unsafe cross-origin access |
-
-### How to interpret a scan
-
-Example mental model:
-
-- many `PASS` results usually means the scan completed successfully
-- `WARN-NEW` means new issues were found and should be reviewed
-- `FAIL-NEW` means a serious issue was detected
-- `INFO` is usually non-blocking context
-
-Always inspect the actual HTML, JSON, or Markdown reports before deciding how serious a result is.
-
-### Common student questions
-
-**Q: Why do I see 404s for `/robots.txt` or `/sitemap.xml`?**
-
-A: That is normal. ZAP checks common paths.
-
-**Q: Why is my workflow green even though ZAP found warnings?**
-
-A: This guide uses `continue-on-error: true` for ZAP steps so that artifacts are still preserved for review.
-
-**Q: Why did the full scan take so long?**
-
-A: Active scans are slower because they try more aggressive checks than baseline scans.
-
----
-
-## Troubleshooting
-
-### Node 20 deprecation warning
-
-GitHub Actions runners are migrating JavaScript actions from Node 20 to Node 24. For this guide, the workflows opt into Node 24 early with:
-
-```yaml
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-```
-
-This guide also updates CodeQL actions to the v4 line, which GitHub announced as the Node 24-ready major version.
-
-You may still see deprecation warnings for some actions until their maintainers fully update their runtime metadata. That warning is expected during the migration period and is not, by itself, the root cause of a failing scan.
-
-### Wrong action version
-
-**Symptom**
-
-```text
-Unable to resolve action `zaproxy/action-full-scan@v0.15.0`
-```
-
-**Fix**
-
-Use:
-
-```yaml
-- uses: zaproxy/action-baseline@v0.15.0
-- uses: zaproxy/action-full-scan@v0.12.0
-```
-
-### Invalid artifact name
-
-**Symptom**
-
-```text
-The artifact name zap_scan is not valid
-```
-
-**Fix**
-
-Use hyphens instead of underscores:
-
-```yaml
-artifact_name: 'zap-baseline-scan'
-```
-
-### CodeQL runs too long
-
-Possible reasons:
-
-- GitHub runner load
-- broad query suite
-- larger repo than expected
-
-Possible fix:
-
-```yaml
-queries: security-minimal
-```
-
-### SCA runs too long
-
-This is common on first run because Dependency-Check may download a large vulnerability database.
-
-Possible improvement:
-
-- run on schedule instead of every push
-- add caching later once students understand the basic workflow
-
-If you saw warnings about Sonatype OSS Index credentials, this guide intentionally disables that analyzer with `--disableOssIndex` so the workflow stays focused on NVD-based scanning.
-
-### DAST cannot connect
-
-If the app is not ready in time, the scan fails.
-
-Improvement already included in this guide:
-
-- loop-based health check
-- log capture to `flask.log`
-
-### Workflow stuck in queued state
-
-Possible reasons:
-
-- GitHub Actions service delay
-- limited free runner concurrency
-- another workflow is occupying the queue
-
-### Too many false positives
-
-You can reduce noise by:
-
-- raising the CVSS failure threshold
-- narrowing query packs
-- suppressing specific known demo-only ZAP warnings
-
-### Permissions error
-
-**Symptom**
-
-```text
-Resource not accessible by integration
-```
-
-**Fix**
-
-Ensure the workflow has enough permissions:
-
-```yaml
-permissions:
-  contents: read
-  security-events: write
-  issues: write
-```
-
----
-
-## Practice exercises
-
-### Exercise 1: Basic setup
+### Exercise 6: Turn the pipeline green
 
 Goal:
 
-- create the app
-- create all workflow files
-- push to GitHub
-- confirm artifacts appear correctly
+- start from a failing pipeline (due to SAST, SCA, or DAST)
+- iteratively fix or suppress issues until all four workflows pass
 
-Success criteria:
+Suggested sequence:
 
-- all workflows run
-- artifacts are present
-- no invalid artifact name errors
-- no invalid ZAP version errors
-
-### Exercise 2: Analyze scan results
-
-Goal:
-
-Download reports and summarize:
-
-- SAST findings
-- SCA findings
-- DAST findings
-- severity breakdown
-
-Suggested deliverable:
-
-`SCAN_ANALYSIS.md`
-
-### Exercise 3: Interpret ZAP findings
-
-Goal:
-
-Review baseline and full scan differences.
-
-Questions to answer:
-
-- which findings are only informational?
-- which findings are new warnings?
-- which findings are likely demo-only and which would matter in production?
-
-### Exercise 4: Compare multiple scans
-
-Goal:
-
-Compare what SAST, SCA, and DAST each found.
-
-Suggested table:
-
-| Scan type | What it found | What it missed | Best use |
-| :-- | :-- | :-- | :-- |
-| SAST | Source issues | Runtime misconfig | Early coding stage |
-| SCA | Dependency risk | Custom code flaws | Supply chain review |
-| DAST | Runtime issues | Deep code context | Live app verification |
-
-### Exercise 5: Document the pipeline
-
-Goal:
-
-Write a short internal note explaining:
-
-- why all three scans are useful
-- when each runs
-- what artifacts are produced
-- what developers should do when findings appear
+- fix at least one CodeQL finding and re-run SAST [web:158][web:149]
+- upgrade or pin dependencies to reduce high CVSS findings and re-run SCA [web:145][web:154]
+- adjust headers or app configuration to reduce ZAP failing alerts and re-run DAST [web:150][web:147]
 
 ---
 
-## Quick reference
+This README is now aligned with the patched workflows:
 
-### Safe artifact names
+- CodeQL uses `@v4` and fails on serious findings by default. [web:158][web:155]
+- SCA uses `--failOnCVSS 7` and `--disableOssIndex` for high-severity teaching failures without OSS Index credentials. [web:145][web:154]
+- DAST uses `fail_action: true` and `-I` so ZAP alerts can fail the job while still saving reports. [web:150][web:147]
+- All workflows opt into Node 24 via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`. [web:106][web:124]
 
-- `sca-reports`
-- `zap-baseline-reports`
-- `zap-fullscan-reports`
-
-### Known-good action versions
-
-- `github/codeql-action/init@v4`
-- `github/codeql-action/analyze@v4`
-- `dependency-check/Dependency-Check_Action@main`
-- `zaproxy/action-baseline@v0.15.0`
-- `zaproxy/action-full-scan@v0.12.0`
-- `actions/checkout@v4`
-- `actions/setup-python@v5`
-- `actions/upload-artifact@v4`
-
-### First things to check when something fails
-
-1. action version pinning
-2. artifact name format
-3. app startup health check
-4. workflow permissions
-5. generated logs and uploaded artifacts
+Do you want me to also paste the final versions of `1-sast-only.yml`, `2-sca-only.yml`, and `4-complete-security.yml` here, or is having them in the README enough for your students to follow?
