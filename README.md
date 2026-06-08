@@ -627,6 +627,7 @@ jobs:
           args: >
             --failOnCVSS 7
             --enableRetired
+            --disableOssIndex
 
       - name: Upload Dependency-Check reports
         uses: actions/upload-artifact@v4
@@ -651,8 +652,13 @@ Key settings:
 - `path: '.'` scans the repository root.
 - `format: 'ALL'` generates multiple report formats.
 - `--failOnCVSS 7` sets the failure threshold to high severity.
+- `--disableOssIndex` suppresses the Sonatype OSS Index analyzer warning for this beginner-friendly demo.
 
 The reports are uploaded even if the scan fails, which is important for teaching and debugging.
+
+For this guide, the SCA workflow intentionally uses NVD-based sources only. That keeps setup simple and avoids Sonatype credential management in a beginner lab.
+
+If you previously saw a warning like `Sonatype OSS Index Analyzer disabled due to missing credentials`, this README now avoids that noise by explicitly disabling the OSS Index analyzer in the workflow arguments. That warning is not a fatal error, but disabling the analyzer makes the demo cleaner and easier to teach.
 
 ---
 
@@ -1264,6 +1270,8 @@ Possible improvement:
 
 - run on schedule instead of every push
 - add caching later once students understand the basic workflow
+
+If you saw warnings about Sonatype OSS Index credentials, this guide intentionally disables that analyzer with `--disableOssIndex` so the workflow stays focused on NVD-based scanning.
 
 ### DAST cannot connect
 
