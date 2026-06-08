@@ -184,6 +184,7 @@ Advantages:
 - native integration with GitHub Actions
 - results flow into the Security tab
 - maintained by GitHub
+- current CodeQL v4 action line is aligned with GitHub's Node 24 runtime migration
 
 ### Artifact naming rules
 
@@ -218,8 +219,8 @@ Use pinned, known-good versions for stability.
 
 ```yaml
 # SAST
-- github/codeql-action/init@v3
-- github/codeql-action/analyze@v3
+- github/codeql-action/init@v4
+- github/codeql-action/analyze@v4
 
 # SCA
 - dependency-check/Dependency-Check_Action@main
@@ -477,13 +478,9 @@ EXPOSE 5000
 CMD ["python", "app.py"]
 ```
 
-### Initialize Git
+### Make the first commit
 
 ```bash
-cd calculator-security-demo
-
-git init
-
 echo "__pycache__/" > .gitignore
 echo "*.pyc" >> .gitignore
 echo ".pytest_cache/" >> .gitignore
@@ -532,7 +529,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
@@ -548,7 +545,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: sast
 ```
@@ -637,7 +634,7 @@ jobs:
           path: reports/
 
       - name: Upload SARIF to GitHub Security (if present)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('reports/dependency-check-report.sarif') != ''
         with:
           sarif_file: reports/dependency-check-report.sarif
@@ -844,7 +841,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
@@ -860,7 +857,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Perform CodeQL Analysis (SAST)
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: sast
 
@@ -893,6 +890,7 @@ jobs:
           args: >
             --failOnCVSS 7
             --enableRetired
+            --disableOssIndex
 
       - name: Upload SCA reports
         uses: actions/upload-artifact@v4
@@ -1231,6 +1229,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 ```
 
+This guide also updates CodeQL actions to the v4 line, which GitHub announced as the Node 24-ready major version.
+
 You may still see deprecation warnings for some actions until their maintainers fully update their runtime metadata. That warning is expected during the migration period and is not, by itself, the root cause of a failing scan.
 
 ### Wrong action version
@@ -1419,8 +1419,8 @@ Write a short internal note explaining:
 
 ### Known-good action versions
 
-- `github/codeql-action/init@v3`
-- `github/codeql-action/analyze@v3`
+- `github/codeql-action/init@v4`
+- `github/codeql-action/analyze@v4`
 - `dependency-check/Dependency-Check_Action@main`
 - `zaproxy/action-baseline@v0.15.0`
 - `zaproxy/action-full-scan@v0.12.0`
