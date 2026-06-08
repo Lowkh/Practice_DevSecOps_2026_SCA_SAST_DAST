@@ -20,12 +20,14 @@ A complete beginner-friendly DevSecOps lab that shows how to scan source code, d
   - [Verified action versions](#verified-action-versions)
   - [Estimated time](#estimated-time)
 - [Project setup](#project-setup)
+  - [Create the GitHub repository first](#create-the-github-repository-first)
+  - [Clone the repository locally](#clone-the-repository-locally)
   - [Directory structure](#directory-structure)
   - [Create `app.py`](#create-apppy)
   - [Create `templates/index.html`](#create-templatesindexhtml)
   - [Create `requirements.txt`](#create-requirementstxt)
   - [Create `Dockerfile`](#create-dockerfile)
-  - [Initialize Git](#initialize-git)
+  - [Make the first commit](#make-the-first-commit)
 - [SAST workflow](#sast-workflow)
   - [What SAST is](#what-sast-is)
   - [SAST workflow YAML](#sast-workflow-yaml)
@@ -242,9 +244,38 @@ Use pinned, known-good versions for stability.
 
 ## Project setup
 
+### Create the GitHub repository first
+
+Create the repository on GitHub **before** creating local files. This avoids the most common beginner Git problems, including remote URL mistakes, `remote origin already exists`, and `failed to push some refs` after GitHub creates an initial commit.
+
+Recommended settings on GitHub:
+
+- Repository name: `calculator-security-demo`
+- Owner: your personal account or organization
+- Visibility: public for easiest CodeQL usage, or private if your plan supports your workflow needs
+- Initialize with README: optional, but this guide is easier if you create the repo first and then clone it immediately
+
+After the repository is created, copy its HTTPS clone URL from GitHub.
+
+### Clone the repository locally
+
+Use the GitHub clone URL instead of starting with `git init` in a random local folder.
+
+```bash
+git clone https://github.com/YOUR_USERNAME/calculator-security-demo.git
+cd calculator-security-demo
+```
+
+If Git asks for your identity later during commit, configure it once:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
 ### Directory structure
 
-Create the project with this layout:
+Inside the cloned repository, create the project with this layout:
 
 ```text
 calculator-security-demo/
@@ -1027,11 +1058,30 @@ These names are safe for GitHub Actions and are easy for students to understand.
 
 ### Push to GitHub
 
+If you cloned the repository first, the `origin` remote is already configured, so the normal push flow is much simpler:
+
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/calculator-security-demo.git
-git add .
-git commit -m "Add complete SAST SCA DAST pipeline"
+git branch -M main
 git push -u origin main
+```
+
+If the GitHub repository was initialized with its own README, license, or `.gitignore`, pull first and then push:
+
+```bash
+git pull --rebase origin main
+git push -u origin main
+```
+
+If you still need to confirm the remote URL, check it with:
+
+```bash
+git remote -v
+```
+
+Only change the remote URL if it points to the wrong repository:
+
+```bash
+git remote set-url origin https://github.com/YOUR_USERNAME/calculator-security-demo.git
 ```
 
 ### Watch workflow runs
