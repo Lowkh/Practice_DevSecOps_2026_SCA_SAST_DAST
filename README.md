@@ -1,283 +1,54 @@
-# Complete Security Scanning Guide for Beginners
+# DevSecOps Lab Handout  
+SAST + SCA + DAST with GitHub Actions
 
-## SAST + SCA + DAST with GitHub Actions
+This lab wires a simple Flask calculator app into GitHub Actions so every push runs:
 
-A complete beginner-friendly DevSecOps lab that shows how to scan source code, dependencies, and a running application using GitHub Actions.
+- SAST with CodeQL (source code). [web:27][web:28]
+- SCA with OWASP Dependency-Check (dependencies). [web:26][web:29]
+- DAST with OWASP ZAP (running app). [web:28][web:31]
 
-## Contents
-
-- [Overview](#overview)
-- [Security scanning model](#security-scanning-model)
-  - [What SAST does](#what-sast-does)
-  - [What SCA does](#what-sca-does)
-  - [What DAST does](#what-dast-does)
-  - [Pipeline flow](#pipeline-flow)
-  - [Why all three matter](#why-all-three-matter)
-- [Prerequisites](#prerequisites)
-  - [What you need](#what-you-need)
-  - [Why CodeQL](#why-codeql)
-  - [Artifact naming rules](#artifact-naming-rules)
-  - [Verified action versions](#verified-action-versions)
-  - [Estimated time](#estimated-time)
-- [Project setup](#project-setup)
-  - [Create the GitHub repository first](#create-the-github-repository-first)
-  - [Clone the repository locally](#clone-the-repository-locally)
-  - [Directory structure](#directory-structure)
-  - [Create `app.py`](#create-apppy)
-  - [Create `templates/index.html`](#create-templatesindexhtml)
-  - [Create `requirements.txt`](#create-requirementstxt)
-  - [Create `Dockerfile`](#create-dockerfile)
-  - [Make the first commit](#make-the-first-commit)
-- [SAST workflow](#sast-workflow)
-  - [What SAST is](#what-sast-is)
-  - [SAST workflow YAML](#sast-workflow-yaml)
-  - [How the SAST workflow works](#how-the-sast-workflow-works)
-  - [CodeQL query suites](#codeql-query-suites)
-- [SCA workflow](#sca-workflow)
-  - [What SCA is](#what-sca-is)
-  - [SCA workflow YAML](#sca-workflow-yaml)
-  - [How the SCA workflow works](#how-the-sca-workflow-works)
-- [DAST workflow](#dast-workflow)
-  - [What DAST is](#what-dast-is)
-  - [DAST workflow YAML](#dast-workflow-yaml)
-  - [Why this DAST version is better](#why-this-dast-version-is-better)
-  - [Optional ZAP rules file](#optional-zap-rules-file)
-- [Integrated pipeline](#integrated-pipeline)
-  - [Complete workflow YAML](#complete-workflow-yaml)
-  - [Execution order](#execution-order)
-  - [Generated artifacts](#generated-artifacts)
-- [Running the repo](#running-the-repo)
-  - [Push to GitHub](#push-to-github)
-  - [Watch workflow runs](#watch-workflow-runs)
-  - [Verify artifacts](#verify-artifacts)
-- [Reading results](#reading-results)
-  - [Actions tab](#actions-tab)
-  - [Security tab](#security-tab)
-  - [Severity levels](#severity-levels)
-- [Understanding ZAP findings](#understanding-zap-findings)
-  - [Result categories](#result-categories)
-  - [Common header findings](#common-header-findings)
-  - [Application findings](#application-findings)
-  - [How to interpret a scan](#how-to-interpret-a-scan)
-  - [Common student questions](#common-student-questions)
-- [Troubleshooting](#troubleshooting)
-  - [Wrong action version](#wrong-action-version)
-  - [Invalid artifact name](#invalid-artifact-name)
-  - [CodeQL runs too long](#codeql-runs-too-long)
-  - [SCA runs too long](#sca-runs-too-long)
-  - [DAST cannot connect](#dast-cannot-connect)
-  - [Workflow stuck in queued state](#workflow-stuck-in-queued-state)
-  - [Too many false positives](#too-many-false-positives)
-  - [Permissions error](#permissions-error)
-- [Practice exercises](#practice-exercises)
-  - [Exercise 1: Basic setup](#exercise-1-basic-setup)
-  - [Exercise 2: Analyze scan results](#exercise-2-analyze-scan-results)
-  - [Exercise 3: Interpret ZAP findings](#exercise-3-interpret-zap-findings)
-  - [Exercise 4: Compare multiple scans](#exercise-4-compare-multiple-scans)
-  - [Exercise 5: Document the pipeline](#exercise-5-document-the-pipeline)
-  - [Exercise 6: Turn the pipeline green](#exercise-6-turn-the-pipeline-green)
-- [Quick reference](#quick-reference)
+You will copy–paste the files, push to GitHub, and then read / fix security findings.
 
 ---
 
-## Overview
+## 1. Mental model
 
-This project builds a simple Flask calculator app and wires it into GitHub Actions so that every push or pull request can trigger three security scan types:
+- **SAST (CodeQL)**: scans your code without running it, looking for dangerous patterns.
+- **SCA (Dependency-Check)**: scans your `requirements.txt` for known CVEs.
+- **DAST (ZAP)**: hits the running app over HTTP and looks for security problems.
 
-- **SAST** using CodeQL for source code analysis.
-- **SCA** using OWASP Dependency-Check for dependency and CVE analysis.
-- **DAST** using OWASP ZAP for dynamic scanning of the running app.
-
-The guide is designed for beginners, but the workflow structure is still realistic enough for workshops, demos, and early DevSecOps training.
-
----
-
-## Security scanning model
-
-### What SAST does
-
-**SAST** (Static Application Security Testing) scans your source code without running the application.
-
-Typical findings include:
-
-- SQL injection patterns
-- XSS-related unsafe handling
-- insecure data flow
-- hardcoded secrets
-- dangerous API usage
-
-### What SCA does
-
-**SCA** (Software Composition Analysis) scans the libraries and packages your project depends on.
-
-Typical findings include:
-
-- known vulnerable dependency versions
-- outdated packages with published CVEs
-- vulnerable transitive dependencies
-- sometimes license or metadata issues
-
-### What DAST does
-
-**DAST** (Dynamic Application Security Testing) attacks the running application from the outside.
-
-Typical findings include:
-
-- missing security headers
-- runtime configuration issues
-- authentication weaknesses
-- reflected input problems
-- exposed routes or unsafe behavior at runtime
-
-### Pipeline flow
+Pipeline flow:
 
 ```text
-1. You push code
-   ↓
-2. SAST scans source code with CodeQL
-   ↓
-3. SCA scans dependencies with Dependency-Check
-   ↓
-4. Application starts successfully
-   ↓
-5. DAST scans the running application with OWASP ZAP
-   ↓
-6. Reports appear in GitHub Actions and Security views
+Push code → SAST → SCA → Build app → DAST → Summary
 ```
-
-### Why all three matter
-
-Each scan sees a different layer of risk:
-
-- **SAST** checks what you wrote.
-- **SCA** checks what you imported.
-- **DAST** checks what actually happens when the app is live.
-
-A useful analogy:
-
-- **SAST** = reviewing the blueprint
-- **SCA** = checking the components you bought
-- **DAST** = attacking the finished system
 
 ---
 
-## Prerequisites
+## 2. Setup steps
 
-### What you need
+### 2.1 Create repo on GitHub
 
-You only need a few basics to run this project:
+- Name: `calculator-security-demo`
+- Visibility: public is easiest for this lab
 
-- GitHub account
-- basic Git knowledge
-- VS Code or another text editor
-- willingness to wait a little on first-run scans
-
-No deep security background is required.
-
-### Why CodeQL
-
-**CodeQL** is a good fit for this guide because it is native to GitHub and easy to adopt.
-
-Advantages:
-
-- free for public repositories
-- no external token required for basic setup
-- native integration with GitHub Actions
-- results flow into the Security tab
-- maintained by GitHub
-- current CodeQL v4 action line is aligned with GitHub's Node 24 runtime migration
-
-### Artifact naming rules
-
-GitHub Actions artifact names should be simple and safe.
-
-Use:
-
-- letters
-- numbers
-- hyphens
-
-Avoid:
-
-- underscores
-- slashes
-- colons
-- wildcard characters
-- duplicate artifact names in the same workflow run
-
-Examples:
-
-- ✅ `sca-reports`
-- ✅ `zap-baseline-reports`
-- ✅ `zap-fullscan-reports`
-- ❌ `zap_scan`
-- ❌ `sca_reports`
-- ❌ `dast/reports`
-
-### Verified action versions
-
-Use pinned, known-good versions for stability.
-
-```yaml
-# SAST
-- github/codeql-action/init@v4
-- github/codeql-action/analyze@v4
-
-# SCA
-- dependency-check/Dependency-Check_Action@main
-
-# DAST
-- zaproxy/action-baseline@v0.15.0
-- zaproxy/action-full-scan@v0.12.0
-
-# Utilities
-- actions/checkout@v4
-- actions/setup-python@v5
-- actions/upload-artifact@v4
-```
-
-### Estimated time
-
-- Initial setup: 30 to 45 minutes
-- First full pipeline run: 20 to 45 minutes
-- Each follow-up practice cycle: 10 to 20 minutes
-
----
-
-## Project setup
-
-### Create the GitHub repository first
-
-Create the repository on GitHub **before** creating local files. This avoids the most common beginner Git problems, including remote URL mistakes, `remote origin already exists`, and `failed to push some refs` after GitHub creates an initial commit.
-
-Recommended settings on GitHub:
-
-- Repository name: `calculator-security-demo`
-- Owner: your personal account or organization
-- Visibility: public for easiest CodeQL usage, or private if your plan supports your workflow needs
-- Initialize with README: optional, but this guide is easier if you create the repo first and then clone it immediately
-
-After the repository is created, copy its HTTPS clone URL from GitHub.
-
-### Clone the repository locally
-
-Use the GitHub clone URL instead of starting with `git init` in a random local folder.
+### 2.2 Clone locally
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/calculator-security-demo.git
 cd calculator-security-demo
 ```
 
-If Git asks for your identity later during commit, configure it once:
+If needed:
 
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-### Directory structure
+### 2.3 Target layout
 
-Inside the cloned repository, create the project with this layout:
+Make your repo look like this:
 
 ```text
 calculator-security-demo/
@@ -294,7 +65,11 @@ calculator-security-demo/
         └── 4-complete-security.yml
 ```
 
-### Create `app.py`
+---
+
+## 3. Application files
+
+### 3.1 `app.py`
 
 ```python
 from flask import Flask, render_template, request, jsonify
@@ -335,7 +110,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 ```
 
-### Create `templates/index.html`
+### 3.2 `templates/index.html`
 
 ```html
 <!DOCTYPE html>
@@ -452,16 +227,16 @@ if __name__ == '__main__':
 </html>
 ```
 
-### Create `requirements.txt`
+### 3.3 `requirements.txt`
 
 ```txt
 flask==2.0.1
 werkzeug==2.0.1
 ```
 
-These versions are intentionally old enough to help demonstrate SCA findings.
+(Old on purpose so SCA finds issues.) [web:26][web:29]
 
-### Create `Dockerfile`
+### 3.4 `Dockerfile`
 
 ```dockerfile
 FROM python:3.9-slim
@@ -479,30 +254,13 @@ EXPOSE 5000
 CMD ["python", "app.py"]
 ```
 
-### Make the first commit
-
-```bash
-echo "__pycache__/" > .gitignore
-echo "*.pyc" >> .gitignore
-echo ".pytest_cache/" >> .gitignore
-
-git add .
-git commit -m "Initial commit: Calculator web app"
-```
-
 ---
 
-## SAST workflow
+## 4. Workflows
 
-### What SAST is
+Place these files in `.github/workflows/`.
 
-SAST examines code without running it. In this guide, GitHub CodeQL is used because it integrates directly with GitHub Actions and the Security tab.
-
-CodeQL checks fail pull requests automatically when they detect high or critical security issues, so in this lab you should expect SAST jobs to fail until you address the reported findings. [web:158][web:155]
-
-### SAST workflow YAML
-
-Create `.github/workflows/1-sast-only.yml`:
+### 4.1 `1-sast-only.yml` — SAST (CodeQL)
 
 ```yaml
 name: 1. SAST - Code Security Scan
@@ -516,6 +274,9 @@ on:
 permissions:
   contents: read
   security-events: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   analyze:
@@ -553,37 +314,7 @@ jobs:
           category: sast
 ```
 
-### How the SAST workflow works
-
-This workflow:
-
-1. checks out the repository
-2. initializes CodeQL
-3. prepares Python
-4. installs dependencies
-5. runs CodeQL analysis
-
-The `category: sast` field helps organize findings in GitHub’s Security experience.
-
-### CodeQL query suites
-
-Common query packs:
-
-- `security-extended` — recommended for a training lab
-- `security-minimal` — faster, less coverage
-- `security-and-quality` — broader checks including code quality
-
----
-
-## SCA workflow
-
-### What SCA is
-
-SCA checks your packages and transitive dependencies for known vulnerabilities.
-
-### SCA workflow YAML
-
-Create `.github/workflows/2-sca-only.yml`:
+### 4.2 `2-sca-only.yml` — SCA (Dependency-Check)
 
 ```yaml
 name: 2. SCA - Dependency Security Scan
@@ -644,33 +375,9 @@ jobs:
           category: sca
 ```
 
-### How the SCA workflow works
+The `--failOnCVSS 7` flag makes the job fail if any vulnerability has CVSS ≥ 7. [web:26][web:30]
 
-Key settings:
-
-- `project: 'calculator-app'` gives the scan a readable project name.
-- `path: '.'` scans the repository root.
-- `format: 'ALL'` generates multiple report formats.
-- `--failOnCVSS 7` sets the failure threshold to high severity and will fail the job when any vulnerability has CVSS ≥ 7. [web:145][web:154]
-- `--disableOssIndex` suppresses the Sonatype OSS Index analyzer warning for this beginner-friendly demo.
-
-The reports are uploaded even if the scan fails, which is important for teaching and debugging. [web:145][web:148]
-
-For this guide, the SCA workflow intentionally uses NVD-based sources only. That keeps setup simple and avoids Sonatype credential management in a beginner lab. [web:148]
-
-If you previously saw a warning like `Sonatype OSS Index Analyzer disabled due to missing credentials`, this README now avoids that noise by explicitly disabling the OSS Index analyzer in the workflow arguments. That warning is not a fatal error, but disabling the analyzer makes the demo cleaner and easier to teach. [web:145]
-
----
-
-## DAST workflow
-
-### What DAST is
-
-DAST tests the running application from the outside. Unlike SAST or SCA, it needs the app to actually start first.
-
-### DAST workflow YAML
-
-Create `.github/workflows/3-dast-only.yml`:
+### 4.3 `3-dast-only.yml` — DAST (ZAP)
 
 ```yaml
 name: 3. DAST - Live Application Scan
@@ -782,37 +489,7 @@ jobs:
           cat flask.log || true
 ```
 
-### Why this DAST version is better
-
-This version improves reliability in a few important ways:
-
-- it waits for the app with a loop instead of assuming a fixed startup time
-- it saves baseline and full scan reports into separate folders
-- it avoids report overwrite confusion
-- it keeps artifacts available even when scans return warnings or soft failures
-- it opts JavaScript actions into Node 24 early so the workflow is better aligned with GitHub's 2026 runtime migration [web:106][web:124]
-- it is configured so that ZAP findings can fail the job, which is ideal for teaching how to respond to DAST alerts [web:150][web:147]
-
-With `fail_action: true` in the baseline scan and `-I` in the full scan, ZAP will mark the job as failed when failing-level alerts are present, while still uploading full reports for discussion. [web:150][web:147]
-
-### Optional ZAP rules file
-
-If you want to suppress noisy demo-only findings, create `.zap/rules.tsv`:
-
-```tsv
-10035	IGNORE	(Strict-Transport-Security Header)
-10063	IGNORE	(Feature Policy Header)
-```
-
-Use this only when you understand what you are suppressing.
-
----
-
-## Integrated pipeline
-
-### Complete workflow YAML
-
-Create `.github/workflows/4-complete-security.yml`:
+### 4.4 `4-complete-security.yml` — integrated pipeline
 
 ```yaml
 name: 4. Complete Security Pipeline
@@ -1043,56 +720,37 @@ jobs:
           echo "- This demo intentionally fails when serious SAST, SCA, or DAST findings are present. Use the reports and logs to decide what to fix next." >> $GITHUB_STEP_SUMMARY
 ```
 
-### Execution order
+---
 
-In this integrated pipeline, any of the SAST, SCA, or DAST jobs can cause the workflow to fail when they find serious issues. This is intentional for teaching: students should expect red builds until they address the underlying findings.
+## 5. After you push
 
-```text
-1. SAST
-   ↓
-2. SCA
-   ↓
-3. Build verification
-   ↓
-4. DAST
-   ↓
-5. Summary
-```
+1. Commit and push:
 
-### Generated artifacts
+   ```bash
+   git add .
+   git commit -m "Add security lab files"
+   git push origin main
+   ```
 
-The pipeline should produce:
+2. Open **GitHub → Actions**
 
-- `sca-reports`
-- `zap-baseline-reports`
-- `zap-fullscan-reports`
+   - Check the runs for:
+     - `1. SAST - Code Security Scan`
+     - `2. SCA - Dependency Security Scan`
+     - `3. DAST - Live Application Scan`
+     - `4. Complete Security Pipeline`
 
-These names are safe for GitHub Actions and are easy for students to understand.
+3. Download artifacts:
+
+   - SCA: `sca-reports` (Dependency-Check HTML/JSON). [web:26][web:30]
+   - DAST: `zap-baseline-reports`, `zap-fullscan-reports` (ZAP HTML/JSON). [web:31]
+
+4. Open the **Security** tab to see SAST and SCA results in GitHub’s UI. [web:27][web:33]
 
 ---
 
-## Practice exercises (new teaching focus)
+## 6. Mini-tasks
 
-### Exercise 6: Turn the pipeline green
-
-Goal:
-
-- start from a failing pipeline (due to SAST, SCA, or DAST)
-- iteratively fix or suppress issues until all four workflows pass
-
-Suggested sequence:
-
-- fix at least one CodeQL finding and re-run SAST [web:158][web:149]
-- upgrade or pin dependencies to reduce high CVSS findings and re-run SCA [web:145][web:154]
-- adjust headers or app configuration to reduce ZAP failing alerts and re-run DAST [web:150][web:147]
-
----
-
-This README is now aligned with the patched workflows:
-
-- CodeQL uses `@v4` and fails on serious findings by default. [web:158][web:155]
-- SCA uses `--failOnCVSS 7` and `--disableOssIndex` for high-severity teaching failures without OSS Index credentials. [web:145][web:154]
-- DAST uses `fail_action: true` and `-I` so ZAP alerts can fail the job while still saving reports. [web:150][web:147]
-- All workflows opt into Node 24 via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`. [web:106][web:124]
-
-Do you want me to also paste the final versions of `1-sast-only.yml`, `2-sca-only.yml`, and `4-complete-security.yml` here, or is having them in the README enough for your students to follow?
+- Make one pipeline run **fail** and identify the reason (SAST / SCA / DAST).
+- Fix one issue (code, dependency, or header) and re-run.
+- Try to get the full `4. Complete Security Pipeline` workflow **green**.
