@@ -48,6 +48,8 @@ You will:
   - [Why two SCA tools](#why-two-sca-tools)
   - [SCA workflow YAML](#sca-workflow-yaml)
   - [How the SCA workflow works](#how-the-sca-workflow-works)
+  - [How to read `pip-audit-report.json`](#how-to-read-pip-audit-reportjson)
+  - [Optional: Python helper to convert the JSON](#optional-python-helper-to-convert-the-json)
 - [DAST workflow](#dast-workflow)
   - [What DAST is](#what-dast-is)
   - [DAST workflow YAML (beginner-friendly)](#dast-workflow-yaml-beginner-friendly)
@@ -578,13 +580,15 @@ SCA checks your packages and transitive dependencies for known vulnerabilities.
 
 In this lab we use:
 
-- **OWASP Dependency‑Check**: a generic SCA engine that integrates well into CI pipelines and supports multiple ecosystems, but Python support is experimental.  
+- **OWASP Dependency‑Check**: a generic SCA engine that integrates well into CI pipelines and supports multiple ecosystems, but Python support is experimental.
 - **pip‑audit**: a Python‑specific SCA tool maintained by PyPA, which reliably flags vulnerable PyPI packages.
 
 Students see both:
 
-- the “classic” OWASP SCA tool wired into CI, and  
+- the “classic” OWASP SCA tool wired into CI, and
 - a modern Python-native SCA tool that actually reports vulnerabilities for `flask`, `requests`, `urllib3`, etc.
+
+Note: `pip-audit` is configured here to run in **report-only mode**. It writes a JSON report but does not fail the workflow when it finds vulnerabilities, so the SCA job stays green. The goal is to practice reading findings before enforcing strict gates.
 
 ### SCA workflow YAML
 
@@ -659,7 +663,7 @@ jobs:
 
       - name: Run pip-audit on requirements.txt
         run: |
-          pip-audit -r requirements.txt -f json -o pip-audit-report.json
+          pip-audit -r requirements.txt -f json -o pip-audit-report.json || true
 
       - name: Upload pip-audit report
         uses: actions/upload-artifact@v4
@@ -674,17 +678,138 @@ jobs:
 Key points to explain to students:
 
 - Dependency‑Check:
-  - Scans the repository (`path: '.'`), looks at dependencies, and writes multiple formats under `reports/`.  
-  - Python scanning is experimental; use it here mainly to show a classic OWASP SCA tool in a pipeline.  
+  - Scans the repository (`path: '.'`), looks at dependencies, and writes multiple formats under `reports/`.
+  - Python scanning is experimental; use it here mainly to show a classic OWASP SCA tool in a pipeline.
 
 - pip‑audit:
-  - Reads `requirements.txt`, queries Python advisory databases, and writes a JSON report with concrete vulnerabilities.  
+  - Reads `requirements.txt`, queries Python advisory databases, and writes a JSON report with concrete vulnerabilities.
   - With `flask==2.0.1`, `werkzeug==2.0.1`, `requests==2.19.0`, `urllib3==1.22`, the report will contain some findings.
+  - The `|| true` ensures the workflow does not fail even if pip‑audit exits with a non-zero code when it detects vulnerabilities.
 
 Artifacts produced:
 
 - `sca-reports` – Dependency‑Check HTML/JSON/XML reports  
 - `pip-audit-report` – `pip-audit-report.json` with Python-specific SCA findings  
+
+### How to read `pip-audit-report.json`
+
+The SCA workflow writes a machine-readable report:
+
+```bash
+pip-audit -r requirements.txt -f json -o pip-audit-report.json
+```
+
+A simplified example of the JSON looks like this:
+
+```json
+{
+  "dependencies": [
+    {
+      "name": "urllib3",
+      "version": "1.22",
+      "vulns": [
+        {
+          "id": "PYSEC-2018-123",
+          "aliases": ["CVE-2018-20060"],
+          "severity": "HIGH",
+          "fix_versions": ["1.24.3"],
+          "description": "Some vulnerability description..."
+        }
+      ]
+    },
+    {
+      "name": "requests",
+      "version": "2.19.0",
+      "vulns": []
+    }
+  ]
+}
+```
+
+You can picture each vulnerable entry as a row in a table:
+
+| Package   | Installed | Vulnerability ID | Severity | CVE / Aliases  | Fix version |
+|----------|-----------|------------------|----------|----------------|------------|
+| urllib3  | 1.22      | PYSEC-2018-123   | HIGH     | CVE-2018-20060 | 1.24.3     |
+
+Reading pattern:
+
+1. **Which package is vulnerable?**  
+   Look for entries where `vulns` is not empty (here: `urllib3`).
+
+2. **What is the issue?**  
+   Use `id`, `severity`, `aliases` and `description` to understand the risk.
+
+3. **What should we do?**  
+   Check `fix_versions` and plan an upgrade (for example, change `urllib3==1.22` to `urllib3==1.24.3` or newer).
+
+For the lab, the goal is not to fix everything immediately but to learn how to locate and interpret these findings.
+
+### Optional: Python helper to convert the JSON
+
+If students prefer a simpler view (or want to open results in Excel), you can use a tiny Python helper script that reads `pip-audit-report.json` and prints a CSV-style summary.
+
+Create `scripts/summarize_pip_audit.py`:
+
+```python
+import json
+from pathlib import Path
+
+REPORT_PATH = Path("pip-audit-report.json")
+
+def load_report(path: Path):
+    with path.open() as f:
+        data = json.load(f)
+
+    # Support both current format (with "dependencies") and legacy array format
+    if isinstance(data, dict) and "dependencies" in data:
+        return data["dependencies"]
+    return data
+
+def main():
+    if not REPORT_PATH.exists():
+        print(f"Report not found: {REPORT_PATH}")
+        return
+
+    deps = load_report(REPORT_PATH)
+
+    # Print CSV header
+    print("package,version,vuln_id,severity,aliases,fix_versions")
+
+    for dep in deps:
+        name = dep.get("name")
+        version = dep.get("version")
+        vulns = dep.get("vulns", [])
+
+        if not vulns:
+            # Uncomment this line if you want to see clean packages too:
+            # print(f\"{name},{version},,,,\")
+            continue  # skip non-vulnerable packages
+
+        for v in vulns:
+            vid = v.get("id", "")
+            severity = v.get("severity", "")
+            aliases = ";".join(v.get("aliases", [])) or ""
+            fixes = ";".join(v.get("fix_versions", [])) or ""
+            print(f"{name},{version},{vid},{severity},{aliases},{fixes}")
+
+if __name__ == "__main__":
+    main()
+```
+
+Usage in your local clone:
+
+```bash
+# From the repository root, after downloading pip-audit-report.json:
+python scripts/summarize_pip_audit.py > pip-audit-summary.csv
+```
+
+You can then:
+
+- open `pip-audit-summary.csv` in Excel, or
+- paste its contents into an online CSV viewer.
+
+This produces one line per vulnerability with the package, installed version, vulnerability ID, optional severity, any aliases (such as CVE IDs), and suggested fix versions.
 
 ---
 
@@ -942,7 +1067,7 @@ jobs:
 
       - name: Run pip-audit on requirements.txt
         run: |
-          pip-audit -r requirements.txt -f json -o pip-audit-report.json
+          pip-audit -r requirements.txt -f json -o pip-audit-report.json || true
 
       - name: Upload pip-audit report
         uses: actions/upload-artifact@v4
@@ -1088,7 +1213,7 @@ jobs:
           echo "- DAST (ZAP): completed; see zap-baseline-reports and zap-fullscan-reports" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Notes" >> $GITHUB_STEP_SUMMARY
-          echo "- In this beginner lab, ZAP alerts do NOT fail the pipeline. Use the reports to learn how to read and prioritize findings." >> $GITHUB_STEP_SUMMARY
+          echo "- In this beginner lab, ZAP and pip-audit findings do NOT fail the pipeline. Use the reports to learn how to read and prioritize findings." >> $GITHUB_STEP_SUMMARY
 ```
 
 ---
@@ -1199,7 +1324,7 @@ Common issues:
 - **App won’t start**: check `flask.log` output in the workflow logs.
 - **ZAP cannot connect**: confirm `http://localhost:5000` is correct and the wait loop passes.
 - **Dependency-Check reports zero Python vulnerabilities**: this is expected in some cases because Python support is experimental; use pip‑audit for reliable Python SCA.
-- **pip-audit fails**: check for network issues or typos in `requirements.txt`.
+- **pip-audit fails**: check for network issues or typos in `requirements.txt`. In this lab, the `|| true` ensures the job still passes so you always get a report artifact if it was generated.
 - **Artifact name errors**: remove underscores or slashes from artifact names.
 - **Permissions errors**: ensure `security-events: write` and `contents: read` are set.
 
@@ -1208,7 +1333,7 @@ Common issues:
 ## Practice exercises
 
 - Run each workflow individually (SAST, SCA, DAST) and identify at least one finding.
-- From `pip-audit-report.json`, pick one vulnerable dependency, look it up, and propose an upgrade version.
+- From `pip-audit-report.json`, or `pip-audit-summary.csv`, pick one vulnerable dependency, look it up, and propose an upgrade version.
 - Use the integrated pipeline and compare results across scans.
 - Fix one SCA or SAST issue, push again, and observe how the results change.
 - Use ZAP reports to identify which issues are headers vs application code.
