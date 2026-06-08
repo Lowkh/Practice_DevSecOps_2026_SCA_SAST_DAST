@@ -225,7 +225,7 @@ Use pinned, known-good versions for stability.
 - dependency-check/Dependency-Check_Action@main
 
 # DAST
-- zaproxy/action-baseline@v0.14.0
+- zaproxy/action-baseline@v0.15.0
 - zaproxy/action-full-scan@v0.12.0
 
 # Utilities
@@ -681,6 +681,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   security-events: write
@@ -728,7 +731,7 @@ jobs:
           mkdir -p reports/baseline reports/fullscan
 
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.14.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'http://localhost:5000'
           cmd_options: '-a'
@@ -788,6 +791,7 @@ This version improves reliability in a few important ways:
 - it saves baseline and full scan reports into separate folders
 - it avoids report overwrite confusion
 - it keeps artifacts available even when scans return warnings or soft failures
+- it opts JavaScript actions into Node 24 early so the workflow is better aligned with GitHub's 2026 runtime migration
 
 ### Optional ZAP rules file
 
@@ -816,6 +820,9 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
@@ -969,7 +976,7 @@ jobs:
           mkdir -p reports/baseline reports/fullscan
 
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.14.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'http://localhost:5000'
           cmd_options: '-a'
@@ -1215,6 +1222,17 @@ A: Active scans are slower because they try more aggressive checks than baseline
 
 ## Troubleshooting
 
+### Node 20 deprecation warning
+
+GitHub Actions runners are migrating JavaScript actions from Node 20 to Node 24. For this guide, the workflows opt into Node 24 early with:
+
+```yaml
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+```
+
+You may still see deprecation warnings for some actions until their maintainers fully update their runtime metadata. That warning is expected during the migration period and is not, by itself, the root cause of a failing scan.
+
 ### Wrong action version
 
 **Symptom**
@@ -1228,7 +1246,7 @@ Unable to resolve action `zaproxy/action-full-scan@v0.15.0`
 Use:
 
 ```yaml
-- uses: zaproxy/action-baseline@v0.14.0
+- uses: zaproxy/action-baseline@v0.15.0
 - uses: zaproxy/action-full-scan@v0.12.0
 ```
 
@@ -1404,7 +1422,7 @@ Write a short internal note explaining:
 - `github/codeql-action/init@v3`
 - `github/codeql-action/analyze@v3`
 - `dependency-check/Dependency-Check_Action@main`
-- `zaproxy/action-baseline@v0.14.0`
+- `zaproxy/action-baseline@v0.15.0`
 - `zaproxy/action-full-scan@v0.12.0`
 - `actions/checkout@v4`
 - `actions/setup-python@v5`
